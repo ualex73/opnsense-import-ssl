@@ -28,7 +28,6 @@
 require_once "config.inc";
 require_once "certs.inc";
 require_once "util.inc";
-require_once "filter.inc";
 
 // ensure running from cli
 if ('cli' !== php_sapi_name()) {
@@ -45,7 +44,7 @@ if (4 !== $argc) {
 }
 
 // name of this script (will appear in cert description)
-$cmd = rtrim(end(explode('/', $argv[0])), '.php');
+$cmd = end(explode('/', $argv[0]));
 
 // simple cert verification
 if (! file_exists($argv[1])) {
@@ -54,8 +53,8 @@ if (! file_exists($argv[1])) {
 }
 
 $cert = trim(file_get_contents($argv[1]));
-if (! preg_match('/^-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----/sm', $cert)) {
-    echo "The certificate does not appear to be valid.\r\n";
+if (! is_array(openssl_x509_parse($cert))) {
+    echo "The certificate is not valid.\r\n";
     die(1);
 }
 
@@ -103,11 +102,10 @@ if (strcmp($subject, "CN=$host") <> 0) {
     die(1);
 }
 
-
 // prepare the certificate for importing
 $certData = [
     'refid' => uniqid(),
-    'descr' => sprintf("Imported via %s on %s", $cmd, date('Y-m-d')),
+    'descr' => sprintf("Imported via opnsense-import-ssl on %s", date('Y-m-d')),
 ];
 
 // populate $certData with OPNsense certificate data
@@ -154,12 +152,12 @@ if (null !== $certStore) {
                 }
 
                 // check description
-                $searchPattern = sprintf('/^Imported via %s on [0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])$/', $cmd);
-                // cert expired
+                $searchPattern = '/^Imported via opnsense-import-ssl on [0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[1-2][0-9]|3[0-1])$/';
                 if (preg_match($searchPattern, $existingCert['descr'])) {
                     echo sprintf("Expired certificate: %s.\r\n", $existingCert['descr']);
+
                     $expiredCerts[] = $existingCert;
-                }
+                } 
             } else {
                 $newCertStore[] = $existingCert;
             }
@@ -175,10 +173,11 @@ if (! empty($expiredCerts)) {
     $certStore = $newCertStore;
     unset($newCertStore);
 
-    echo sprintf("%d of %d certificates removed.\r\n", $expiredCount, $totalCount);
+    echo sprintf("Attempted to remove %d of %d certificates (not possible if in use).\r\n", $expiredCount, $totalCount);
 }
 // write the config and restart the gui
 write_config();
 configd_run('webgui restart 2', true);
 
-echo "Certificates updated successfully\r\n.";
+echo "Certificates updated successfully.\r\n";
+
